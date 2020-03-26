@@ -3,9 +3,19 @@
 #include <stdio.h>
 #include <pcap.h>
 #include <time.h>
-#include <Winsock2.h>
+#include <winsock.h>
+#include <string>
 #include "Misc.h"
+#pragma warning(disable : 4996)
 #define LINE_LEN 16
+
+/* All our structs should be offloaded to another file as well*/
+/* Ethernet Header */
+typedef struct ethernet_header{
+	BYTE dst_mac[6];
+	BYTE src_mac[6];
+	u_short type;
+}ethernet_header;
 
 /* IP Address */
 typedef struct ip_address{
@@ -29,6 +39,14 @@ typedef struct ip_header{
 	ip_address daddr;
 	u_int op_pad;
 }ip_header;
+
+/* ICMP Header */
+typedef struct icmp_header {
+	BYTE type;
+	BYTE code;
+	u_short crc;
+	u_int op_pad;
+}icmp_header;
 
 /* TCP Header */
 typedef struct tcp_header {
@@ -54,14 +72,14 @@ typedef struct udp_header{
 	
 
 void packet_handler(u_char*, const struct pcap_pkthdr *, const u_char*);
-
+std::string ProtocolToString(u_char proto);
 int main(int argc, char* argv[])
 {
 	pcap_t* fp;
 	char errbuf[PCAP_ERRBUF_SIZE];
 	char source[PCAP_BUF_SIZE];
 	
-	if(!LoadNpDlls())
+ 	if(!LoadNpDlls())
 	{
 		printf("Failed to load the required DLL's\n");
 		exit(1);
@@ -99,7 +117,10 @@ void packet_handler(u_char* temp1, const struct pcap_pkthdr* header, const u_cha
 {
 	struct tm ltime;
 	char timestr[16];
+	ethernet_header *pEthHeader;
 	ip_header *pIPHeader;
+	std::string ProtoStr = "Unknown";
+	icmp_header *pICMPHeader;
 	udp_header *pUDPHeader;
 	tcp_header *pTCPHeader;
 	u_int ip_len;
@@ -110,31 +131,76 @@ void packet_handler(u_char* temp1, const struct pcap_pkthdr* header, const u_cha
 	(VOID)temp1;
 	
 	
-	/* Lets convert the stamp of the packet into something useful */
+	/* Lets convert the stamp of the packet into something useful */	
 	local_tv_sec = header->ts.tv_sec;
 	localtime_s(&ltime, &local_tv_sec);
 	strftime(timestr, sizeof timestr, "%H:%M:%S", &ltime);
 	printf("%s.%.6d len:%d ", timestr, header->ts.tv_usec, header->len);
 	
-	/* Now lets work with the IP header */
-	pIPHeader = (ip_header *) (pkt_data + 14);
-	ip_len = (pIPHeader->ver_ihl & 0xf) * 4;
-	if(pIPHeader->proto == 6)
+	
+	pEthHeader = (ethernet_header *)(pkt_data);
+	/* Ignoring non-IPv4 for now*/
+	if((int)pEthHeader->type == 0x08)
 	{
-		pTCPHeader = (tcp_header *)((u_char *)pIPHeader + ip_len);
-		sprt = ntohs(pTCPHeader->sprt);
-		dprt = ntohs(pTCPHeader->dprt);
+		
+		pIPHeader = (ip_header *) (pkt_data + 14);
+		ip_len = (pIPHeader->ver_ihl & 0xf) * 4;
+		
+		switch(pIPHeader->proto) // This switch statement should probably be offloaded out of main
+		{
+			case 1:
+				pICMPHeader = (icmp_header *)((u_char *)pIPHeader + ip_len);
+				sprt = 0;
+				dprt = 0;
+				ProtoStr = "ICMP";
+				break;
+			case 6:
+				pTCPHeader = (tcp_header *)((u_char *)pIPHeader + ip_len);
+				sprt = ntohs(pTCPHeader->sprt);
+				dprt = ntohs(pTCPHeader->dprt);
+				ProtoStr = "TCP";
+				break;
+			case 17:
+				pUDPHeader = (udp_header*)((u_char*)pIPHeader + ip_len);
+				sprt = ntohs(pUDPHeader->sprt);
+				dprt = ntohs(pUDPHeader->dprt);
+				ProtoStr = "UDP";
+				break;
+			default:
+				sprt = 0;
+				dprt = 0;
+				break;			
+			
+		}
+		
+		printf("%s\t%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d\n",
+			ProtoStr.c_str(),
+			pIPHeader->saddr.oct1,
+			pIPHeader->saddr.oct2,
+			pIPHeader->saddr.oct3,
+			pIPHeader->saddr.oct4,
+			sprt,
+			pIPHeader->daddr.oct1,
+			pIPHeader->daddr.oct2,
+			pIPHeader->daddr.oct3,
+			pIPHeader->daddr.oct4,
+			dprt);
+
 	}
-	printf("%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d\n",
-		pIPHeader->daddr.oct1,
-		pIPHeader->saddr.oct2,
-		pIPHeader->saddr.oct2,
-		pIPHeader->saddr.oct3,
-		sprt,
-		pIPHeader->daddr.oct1,
-		pIPHeader->daddr.oct2,
-		pIPHeader->daddr.oct3,
-		pIPHeader->daddr.oct4,
-		dprt);
 	printf("\n\n");
 }
+
+std::string ProtocolToString(u_char proto)
+{
+	char ProtocolStr[10];
+	switch(proto)
+	{
+		case 6:
+			return "TCP";
+		case 17:
+			return "UDP";
+		default:
+			return "Unknown";
+	}	
+}
+
