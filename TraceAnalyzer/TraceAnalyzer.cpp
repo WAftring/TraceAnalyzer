@@ -5,76 +5,19 @@
 #include <time.h>
 #include <winsock.h>
 #include <string>
+#include "Logger.h"
+#include "NetStructs.h"
+#include "ConversationMgr.h"
+
 #include "Misc.h"
 #pragma warning(disable : 4996)
 #define LINE_LEN 16
-
-/* All our structs should be offloaded to another file as well*/
-/* Ethernet Header */
-typedef struct ethernet_header{
-	BYTE dst_mac[6];
-	BYTE src_mac[6];
-	u_short type;
-}ethernet_header;
-
-/* IP Address */
-typedef struct ip_address{
-	u_char oct1;
-	u_char oct2;
-	u_char oct3;
-	u_char oct4;
-}ip_address;
-
-/* IP Header */
-typedef struct ip_header{
-	u_char ver_ihl;
-	u_char tos;
-	u_short tlen;
-	u_short identification;
-	u_short flags_fo;
-	u_char ttl;
-	u_char proto;
-	u_short crc;
-	ip_address saddr;
-	ip_address daddr;
-	u_int op_pad;
-}ip_header;
-
-/* ICMP Header */
-typedef struct icmp_header {
-	BYTE type;
-	BYTE code;
-	u_short crc;
-	u_int op_pad;
-}icmp_header;
-
-/* TCP Header */
-typedef struct tcp_header {
-	u_short sprt;
-	u_short dprt;
-	u_int seq;
-	BYTE data_offset;
-	BYTE reserved;
-	BYTE flags;
-	u_short window;
-	u_short crc;
-	u_short urg_ptr;
-	u_int op_pad;
-}tcp_header;
-
-/* UDP Header */
-typedef struct udp_header{
-	u_short sprt;
-	u_short dprt;
-	u_short len;
-	u_short crc;
-}udp_header;
-	
 
 void packet_handler(u_char*, const struct pcap_pkthdr *, const u_char*);
 std::string ProtocolToString(u_char proto);
 int main(int argc, char* argv[])
 {
+	// I need to figure out how to handle flags
 	pcap_t* fp;
 	char errbuf[PCAP_ERRBUF_SIZE];
 	char source[PCAP_BUF_SIZE];
@@ -89,7 +32,11 @@ int main(int argc, char* argv[])
 		printf("usage: %s filename", argv[0]);
 		exit(1);
 	}
-	
+	if (!InitLogger(argv[1]))
+	{
+		printf("Failed to setup analysis\n");
+		exit(1);
+	}
 	if( pcap_createsrcstr( source,
 							PCAP_SRC_FILE,
 							NULL,
@@ -115,6 +62,7 @@ int main(int argc, char* argv[])
 
 void packet_handler(u_char* temp1, const struct pcap_pkthdr* header, const u_char* pkt_data)
 {
+	/* I need to think of a way to manage the structures of conversations */
 	struct tm ltime;
 	char timestr[16];
 	ethernet_header *pEthHeader;
@@ -142,50 +90,9 @@ void packet_handler(u_char* temp1, const struct pcap_pkthdr* header, const u_cha
 	/* Ignoring non-IPv4 for now*/
 	if((int)pEthHeader->type == 0x08)
 	{
-		
 		pIPHeader = (ip_header *) (pkt_data + 14);
 		ip_len = (pIPHeader->ver_ihl & 0xf) * 4;
-		
-		switch(pIPHeader->proto) // This switch statement should probably be offloaded out of main
-		{
-			case 1:
-				pICMPHeader = (icmp_header *)((u_char *)pIPHeader + ip_len);
-				sprt = 0;
-				dprt = 0;
-				ProtoStr = "ICMP";
-				break;
-			case 6:
-				pTCPHeader = (tcp_header *)((u_char *)pIPHeader + ip_len);
-				sprt = ntohs(pTCPHeader->sprt);
-				dprt = ntohs(pTCPHeader->dprt);
-				ProtoStr = "TCP";
-				break;
-			case 17:
-				pUDPHeader = (udp_header*)((u_char*)pIPHeader + ip_len);
-				sprt = ntohs(pUDPHeader->sprt);
-				dprt = ntohs(pUDPHeader->dprt);
-				ProtoStr = "UDP";
-				break;
-			default:
-				sprt = 0;
-				dprt = 0;
-				break;			
-			
-		}
-		
-		printf("%s\t%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d\n",
-			ProtoStr.c_str(),
-			pIPHeader->saddr.oct1,
-			pIPHeader->saddr.oct2,
-			pIPHeader->saddr.oct3,
-			pIPHeader->saddr.oct4,
-			sprt,
-			pIPHeader->daddr.oct1,
-			pIPHeader->daddr.oct2,
-			pIPHeader->daddr.oct3,
-			pIPHeader->daddr.oct4,
-			dprt);
-
+		CheckPacket(timestr, pIPHeader, ip_len);
 	}
 	printf("\n\n");
 }
