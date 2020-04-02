@@ -1,12 +1,13 @@
 #include "ConversationMgr.h"
 #include <cstdlib>
+#include <string>
 #include "Logger.h"
 #pragma warning(disable : 4996)
 std::vector<frame*> g_vFrames;
 
 BOOL CompareIPAddr(ip_address ip1, ip_address ip2);
 BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int count); // Maybe I should overload this so I don't need to have to deal with a return from CheckPacket
-char* FrameToStr(frame *conversionFrame);
+std::string FrameToStr(frame *conversionFrame);
 
 BOOL CompareIPAddr(ip_address ip1, ip_address ip2)
 {
@@ -24,45 +25,56 @@ const char* ProtocolToString(BYTE proto)
 	{
 		case 6:
 			ProtoStr = "TCP";
+			break;
 		case 17:
 			ProtoStr = "UDP";
+			break;
 		default:
 			ProtoStr = "UNKNOWN";
+			break;
 	}
 	
 	return ProtoStr;
 	
 }
-char* FrameToStr(frame *conversionFrame)
+std::string FrameToStr(frame *conversionFrame)
 {
 	
 	//Convert the frame to a string with the following structure
 	// PROTOCOLS Src_IP.Src_Port -> Dst_IP.Dst_Port
 	LPCSTR ProtoStr;
-	LPSTR pRetBuff = NULL;
-	ProtoStr = ProtocolToString(conversionFrame->iphdr->proto);
-	if (sprintf(pRetBuff, "%s\t%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d", ProtoStr,
-		conversionFrame->iphdr->saddr.oct1,
-		conversionFrame->iphdr->saddr.oct2,
-		conversionFrame->iphdr->saddr.oct3,
-		conversionFrame->iphdr->saddr.oct4,
+	char pRetBuff[MAX_PATH];
+	int Result = 0;
+	ProtoStr = ProtocolToString(conversionFrame->iphdr.proto);
+	Result = sprintf(pRetBuff, "%s\t%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d", ProtoStr,
+		conversionFrame->iphdr.saddr.oct1,
+		conversionFrame->iphdr.saddr.oct2,
+		conversionFrame->iphdr.saddr.oct3,
+		conversionFrame->iphdr.saddr.oct4,
 		conversionFrame->src_port,
-		conversionFrame->iphdr->daddr.oct1,
-		conversionFrame->iphdr->daddr.oct2,
-		conversionFrame->iphdr->daddr.oct3,
-		conversionFrame->iphdr->daddr.oct4,
-		conversionFrame->dst_port))
+		conversionFrame->iphdr.daddr.oct1,
+		conversionFrame->iphdr.daddr.oct2,
+		conversionFrame->iphdr.daddr.oct3,
+		conversionFrame->iphdr.daddr.oct4,
+		conversionFrame->dst_port);
+	if(Result <= 0)
 	{
 		printf("Failed write to the ret buffer\n");
+		strcpy(pRetBuff, "Unable to write string");
 	}
+
 	return pRetBuff;
 	
 	
 }
 BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int count)
 {
-	LPSTR ContentHeader;
-	LPSTR ContentPayload = NULL;
+	std::string ContentHeader;
+	char ContentPayload[MAX_PATH];
+	if (currentFrame == NULL)
+	{
+		return FALSE;
+	}
 	if (match == 3)
 	{
 		return TRUE;
@@ -71,51 +83,68 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 	{
 		return FALSE;
 	}
-	//General
-	if(abs(currentFrame->iphdr->ttl - tempFrame->iphdr->ttl) >= 30)
+	//IP Layer
+	if((tempFrame->issue_flags & IPv4_TTL_MANIPULATION) == IPv4_TTL_MANIPULATION || (currentFrame->issue_flags & IPv4_TTL_MANIPULATION) == IPv4_TTL_MANIPULATION)
 	{
-		//We have a TTL manipulation!
-		//Write this to a log somewhere
-		//I should have a flag system for the convesations to see if we already have hit one of these flags
-		ContentHeader = FrameToStr(tempFrame);
-		sprintf(ContentPayload, "%s TTL manipulation found.\nQuestions:\nAre we communicating with a UNIX device?\nWhat does our traffic route look like?", ContentHeader);
-		WriteToReport(ContentPayload, LogType::WARN);
-
-		
+		if(abs(currentFrame->iphdr.ttl - tempFrame->iphdr.ttl) >= 30)
+		{
+			//We have a TTL manipulation!
+			//Write this to a log somewhere
+			//I should have a flag system for the convesations to see if we already have hit one of these flags
+			ContentHeader = FrameToStr(tempFrame);
+			sprintf(ContentPayload, "%s TTL manipulation found.\nQuestions:\nAre we communicating with a UNIX device?\nWhat does our traffic route look like?\n", ContentHeader.c_str());
+			WriteToReport(ContentPayload, LogType::WARN);
+			tempFrame->issue_flags |= IPv4_TTL_MANIPULATION;
+		}
 	}
-	if(currentFrame->iphdr->proto == 6)
+	
+	//Working with TCP
+	if(currentFrame->iphdr.proto == 6)
 	{
 		// Do our TCP RFL checks
 		// WARN
 		// SYN Retransmits we need to try 4 times
-		if ((currentFrame->tcphdr->flags & SYN) == SYN)
+		if((tempFrame->issue_flags & TCP_SYNRT) == TCP_SYNRT || (currentFrame->issue_flags & TCP_SYNRT) == TCP_SYNRT)
 		{
-
-			if ((tempFrame->tcphdr->flags & (SYN | ACK)) != (SYN | ACK))
+			if ((currentFrame->tcphdr.flags & SYN) == SYN)
 			{
-				//We match the behavior of breaking the expected behavior
-				match++;
-				count++;
-				if (CheckConversation(currentFrame->prev_frame, currentFrame, match, count))
+
+				if ((tempFrame->tcphdr.flags & (SYN | ACK)) != (SYN | ACK))
 				{
-					ContentHeader = FrameToStr(tempFrame);
-					sprintf(ContentPayload, "%s TCP SYN Retransmission found.\nQuestions\nDo we see the packet arrive on the destination?\nDo we have a TCP listener on the destination port?", ContentHeader);
-					WriteToReport(ContentPayload, LogType::WARN);
-					return TRUE;
+					//We match the behavior of breaking the expected behavior
+					match++;
+					count++;
+					if (CheckConversation(currentFrame->prev_frame, currentFrame, match, count))
+					{
+						ContentHeader = FrameToStr(tempFrame);
+						sprintf(ContentPayload, "%s TCP SYN Retransmission found.\nQuestions\nDo we see the packet arrive on the destination?\nDo we have a TCP listener on the destination port?\n", ContentHeader);
+						WriteToReport(ContentPayload, LogType::WARN);
+						//I need to set the flag for TCP_SYNRT
+						tempFrame->issue_flags |= TCP_SYNRT;
+						return TRUE;
+					}
+					match = 0;
+					count = 0;
 				}
 			}
 		}
 		// TCP Retransmits
-		if (currentFrame->tcphdr->seq == tempFrame->tcphdr->seq)
+		if((tempFrame->issue_flags & TCP_RT) == TCP_RT || (currentFrame->issue_flags & TCP_RT) == TCP_RT)
 		{
-			//I might need more robust logic for this...
-			match++;
-			count++;
-			if (CheckConversation(currentFrame->prev_frame, tempFrame, match, count))
+			if (currentFrame->tcphdr.seq == tempFrame->tcphdr.seq)
 			{
-				ContentHeader = FrameToStr(tempFrame);
-				sprintf(ContentPayload, "%s TCP Retransmission found.\n");
-				return TRUE;
+				//I might need more robust logic for this...
+				match++;
+				count++;
+				if (CheckConversation(currentFrame->prev_frame, tempFrame, match, count))
+				{
+					ContentHeader = FrameToStr(tempFrame);
+					sprintf(ContentPayload, "%s TCP Retransmission found.\n",ContentHeader);
+					tempFrame->issue_flags |= TCP_RT;
+					return TRUE;
+				}
+				match = 0;
+				count = 0;
 			}
 		}
 		//TCP Zero Window
@@ -125,7 +154,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 		// RTT
 		
 	}
-	else if(currentFrame->iphdr->proto == 17)
+	else if(currentFrame->iphdr.proto == 17)
 	{
 		// Do our UDP RFL checks
 		// I'm gonna need to think about this a bit more...
@@ -168,9 +197,9 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 			break;
 	}
 
-	tempFrame->iphdr = iphdr;
-	tempFrame->tcphdr = pTCPHeader;
-	tempFrame->udphdr = pUDPHeader;
+	tempFrame->iphdr = *iphdr;
+	tempFrame->tcphdr = *pTCPHeader;
+	tempFrame->udphdr = *pUDPHeader;
 	tempFrame->src_port = src_port;
 	tempFrame->dst_port = dst_port;
 	tempFrame->prev_frame = NULL;
@@ -190,11 +219,11 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 			frame *currentFrame = g_vFrames.at(i);
 			//frame currentFrame = currentConvo[-1];
 			//Broadest down to most specific
-			if (currentFrame->iphdr->proto == iphdr->proto)
+			if (currentFrame->iphdr.proto == iphdr->proto)
 			{
 				//Starting with matching IP addresses
-				if ((CompareIPAddr(currentFrame->iphdr->saddr, iphdr->saddr) && CompareIPAddr(currentFrame->iphdr->daddr, iphdr->daddr)) //Compare if source == source and dst == dst
-					|| (CompareIPAddr(currentFrame->iphdr->daddr, iphdr->saddr) && CompareIPAddr(currentFrame->iphdr->saddr, iphdr->daddr))) //Compare if source == dst and dst == soruce
+				if ((CompareIPAddr(currentFrame->iphdr.saddr, iphdr->saddr) && CompareIPAddr(currentFrame->iphdr.daddr, iphdr->daddr)) //Compare if source == source and dst == dst
+					|| (CompareIPAddr(currentFrame->iphdr.daddr, iphdr->saddr) && CompareIPAddr(currentFrame->iphdr.saddr, iphdr->daddr))) //Compare if source == dst and dst == soruce
 				{
 					//Next we need to check our ports
 					if ((currentFrame->src_port == src_port && currentFrame->dst_port == dst_port)

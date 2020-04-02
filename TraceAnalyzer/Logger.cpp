@@ -2,10 +2,11 @@
 #include <string>
 #include "Logger.h"
 #pragma warning(disable : 4996)
-LPCSTR g_LogPath;
+char g_LogPath[MAX_PATH];
 
 BOOL InitLogger(const char* Path)
 {
+	//TODO: Add logic for if file already exists
 	DWORD dwRetVal;
 	std::string LogPath;
 	char ReportIntro[MAX_PATH];
@@ -22,7 +23,7 @@ BOOL InitLogger(const char* Path)
 	
 	LogPath.append("\\Trace_Report.log");
 	sprintf(ReportIntro, "Trace Analysis\n%s", Path);
-	g_LogPath = LogPath.c_str();
+	strcpy(g_LogPath, LogPath.c_str());
 	WriteToReport(ReportIntro, LogType::HEADER);
 	return TRUE;
 
