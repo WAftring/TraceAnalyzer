@@ -84,7 +84,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 		return FALSE;
 	}
 	//IP Layer
-	if((tempFrame->issue_flags & IPv4_TTL_MANIPULATION) == IPv4_TTL_MANIPULATION || (currentFrame->issue_flags & IPv4_TTL_MANIPULATION) == IPv4_TTL_MANIPULATION)
+	if((tempFrame->issue_flags & IPv4_TTL_MANIPULATION) != IPv4_TTL_MANIPULATION && (currentFrame->issue_flags & IPv4_TTL_MANIPULATION) != IPv4_TTL_MANIPULATION)
 	{
 		if(abs(currentFrame->iphdr.ttl - tempFrame->iphdr.ttl) >= 30)
 		{
@@ -94,7 +94,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			ContentHeader = FrameToStr(tempFrame);
 			sprintf(ContentPayload, "%s TTL manipulation found.\nQuestions:\nAre we communicating with a UNIX device?\nWhat does our traffic route look like?\n", ContentHeader.c_str());
 			WriteToReport(ContentPayload, LogType::WARN);
-			tempFrame->issue_flags |= IPv4_TTL_MANIPULATION;
+			currentFrame->issue_flags |= IPv4_TTL_MANIPULATION;
 		}
 	}
 	
@@ -104,7 +104,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 		// Do our TCP RFL checks
 		// WARN
 		// SYN Retransmits we need to try 4 times
-		if((tempFrame->issue_flags & TCP_SYNRT) == TCP_SYNRT || (currentFrame->issue_flags & TCP_SYNRT) == TCP_SYNRT)
+		if((tempFrame->issue_flags & TCP_SYNRT) != TCP_SYNRT && (currentFrame->issue_flags & TCP_SYNRT) != TCP_SYNRT)
 		{
 			if ((currentFrame->tcphdr.flags & SYN) == SYN)
 			{
@@ -120,7 +120,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 						sprintf(ContentPayload, "%s TCP SYN Retransmission found.\nQuestions\nDo we see the packet arrive on the destination?\nDo we have a TCP listener on the destination port?\n", ContentHeader);
 						WriteToReport(ContentPayload, LogType::WARN);
 						//I need to set the flag for TCP_SYNRT
-						tempFrame->issue_flags |= TCP_SYNRT;
+						currentFrame->issue_flags |= TCP_SYNRT;
 						return TRUE;
 					}
 					match = 0;
@@ -129,7 +129,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			}
 		}
 		// TCP Retransmits
-		if((tempFrame->issue_flags & TCP_RT) == TCP_RT || (currentFrame->issue_flags & TCP_RT) == TCP_RT)
+		if((tempFrame->issue_flags & TCP_RT) != TCP_RT && (currentFrame->issue_flags & TCP_RT) != TCP_RT)
 		{
 			if (currentFrame->tcphdr.seq == tempFrame->tcphdr.seq)
 			{
@@ -140,7 +140,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 				{
 					ContentHeader = FrameToStr(tempFrame);
 					sprintf(ContentPayload, "%s TCP Retransmission found.\n",ContentHeader);
-					tempFrame->issue_flags |= TCP_RT;
+					currentFrame->issue_flags |= TCP_RT;
 					return TRUE;
 				}
 				match = 0;
@@ -150,6 +150,10 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 		//TCP Zero Window
 		// INFO
 		// RST
+		if ((tempFrame->tcphdr.flags & (RST | FIN)) == (RST|FIN) || (currentFrame->tcphdr.flags & (RST | FIN)) == (RST | FIN) )
+		{
+			printf("We are doing a RST or a FIN\n");
+		}
 		// MSS
 		// RTT
 		
@@ -214,9 +218,9 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 	// This is going to have awful Big O notation...
 	else
 	{
-		for (int i = 0; i < g_vFrames.size(); i++)
+		for (int i = g_vFrames.size(); i > 0; i--)
 		{
-			frame *currentFrame = g_vFrames.at(i);
+			frame *currentFrame = g_vFrames.at(i - 1);
 			//frame currentFrame = currentConvo[-1];
 			//Broadest down to most specific
 			if (currentFrame->iphdr.proto == iphdr->proto)
@@ -232,15 +236,24 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 						//I should just check against last frame for now but w/e
 						CheckConversation(currentFrame, tempFrame,0,0);
 						tempFrame->prev_frame = currentFrame;
-						//currentConvo.push_back(tempFrame);
-						g_vFrames[i] = tempFrame;
-						bAdded = TRUE;
+						tempFrame->issue_flags = currentFrame->issue_flags;
+						if ((tempFrame->tcphdr.flags & (RST | FIN)) == (RST | FIN))
+						{
+							g_vFrames.pop_back();
+						}
+						else
+						{
+							//currentConvo.push_back(tempFrame);
+							g_vFrames[i - 1] = tempFrame;
+							bAdded = TRUE;
+						}
 					}
 				}
 			}
 			if (!bAdded)
 			{
 				g_vFrames.push_back(tempFrame);
+				printf("Convos: %d\n", g_vFrames.size());
 			}
 		}
 	}

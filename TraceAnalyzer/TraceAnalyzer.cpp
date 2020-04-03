@@ -8,13 +8,12 @@
 #include "Logger.h"
 #include "NetStructs.h"
 #include "ConversationMgr.h"
-
 #include "Misc.h"
+
 #pragma warning(disable : 4996)
 #define LINE_LEN 16
 
 void packet_handler(u_char*, const struct pcap_pkthdr *, const u_char*);
-std::string ProtocolToString(u_char proto);
 int main(int argc, char* argv[])
 {
 	// I need to figure out how to handle flags
@@ -32,6 +31,7 @@ int main(int argc, char* argv[])
 		printf("usage: %s filename", argv[0]);
 		exit(1);
 	}
+	printf("Starting conversion of %s\n", argv[1]);
 	if (!InitLogger(argv[1]))
 	{
 		printf("Failed to setup analysis\n");
@@ -56,7 +56,7 @@ int main(int argc, char* argv[])
 	}
 	
 	pcap_loop(fp, 0, packet_handler, NULL);
-	
+	printf("Completed conversion\n");
 	return 0;
 }
 
@@ -67,23 +67,17 @@ void packet_handler(u_char* temp1, const struct pcap_pkthdr* header, const u_cha
 	char timestr[16];
 	ethernet_header *pEthHeader;
 	ip_header *pIPHeader;
-	std::string ProtoStr = "Unknown";
-	icmp_header *pICMPHeader;
-	udp_header *pUDPHeader;
-	tcp_header *pTCPHeader;
 	u_int ip_len;
-	u_short sprt, dprt;
 	time_t local_tv_sec;
 	
 	int i = 0;
-	(VOID)temp1;
+	//(VOID)temp1;
 	
 	
 	/* Lets convert the stamp of the packet into something useful */	
 	local_tv_sec = header->ts.tv_sec;
 	localtime_s(&ltime, &local_tv_sec);
 	strftime(timestr, sizeof timestr, "%H:%M:%S", &ltime);
-	printf("%s.%.6d len:%d ", timestr, header->ts.tv_usec, header->len);
 	
 	
 	pEthHeader = (ethernet_header *)(pkt_data);
@@ -94,20 +88,6 @@ void packet_handler(u_char* temp1, const struct pcap_pkthdr* header, const u_cha
 		ip_len = (pIPHeader->ver_ihl & 0xf) * 4;
 		CheckPacket(timestr, pIPHeader, ip_len);
 	}
-	printf("\n\n");
 }
 
-std::string ProtocolToString(u_char proto)
-{
-	char ProtocolStr[10];
-	switch(proto)
-	{
-		case 6:
-			return "TCP";
-		case 17:
-			return "UDP";
-		default:
-			return "Unknown";
-	}	
-}
 
