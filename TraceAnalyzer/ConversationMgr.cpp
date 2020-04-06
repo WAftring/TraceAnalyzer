@@ -208,10 +208,11 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 	tempFrame->dst_port = dst_port;
 	tempFrame->prev_frame = NULL;
 	//TODO: I need better variable naming
-	
+	//printf("%s", FrameToStr(tempFrame).c_str()); //For debugging info
 	if (g_vFrames.size() == 0) // This might be redundant now
 	{
 		g_vFrames.push_back(tempFrame);
+		//printf("Created new convo\n"); //more debug info
 	}
 	//I need to think about how to handle source dest IP combo
 	//For example A1:B2 should go into the same frame list as B2:A1 but not B1:A2
@@ -246,6 +247,8 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 							//currentConvo.push_back(tempFrame);
 							g_vFrames[i - 1] = tempFrame;
 							bAdded = TRUE;
+							//printf("Added to existing convo\n"); //more debug info
+							break;
 						}
 					}
 				}
@@ -253,7 +256,8 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 			if (!bAdded)
 			{
 				g_vFrames.push_back(tempFrame);
-				printf("Convos: %d\n", g_vFrames.size());
+				//printf("Created new convo\n"); //Debug info
+				break;
 			}
 		}
 	}

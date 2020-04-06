@@ -28,7 +28,7 @@ BOOL InitLogger(const char* Path)
 	//Testing if the path exists, if yes clear it else, create it
 	if(PathFileExistsA(g_LogPath))
 	{
-		printf("Previous log file exists what would you like to do? (o)verwrite/(e)xit\n");
+		printf("Previous log file exists what would you like to do? (o)verwrite/(e)xit: ");
 		while(ReadIn)
 		{
 			ActionBuff = getchar();
@@ -53,6 +53,7 @@ BOOL InitLogger(const char* Path)
 					break;
 			}
 		}
+		printf("\n");
 	}
 	sprintf(ReportIntro, "Trace Analysis\n%s\n==========\n\n", Path);
 	WriteToReport(ReportIntro, LogType::HEADER);
