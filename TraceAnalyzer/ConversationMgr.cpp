@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <string>
 #include "Logger.h"
-#pragma warning(disable : 4996)
+
 std::vector<frame*> g_vFrames;
 
 BOOL CompareIPAddr(ip_address ip1, ip_address ip2);
@@ -46,7 +46,7 @@ std::string FrameToStr(frame *conversionFrame)
 	char pRetBuff[MAX_PATH];
 	int Result = 0;
 	ProtoStr = ProtocolToString(conversionFrame->iphdr.proto);
-	Result = sprintf(pRetBuff, "%s\t%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d", ProtoStr,
+	Result = sprintf_s(pRetBuff, MAX_PATH, "%s\t%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d", ProtoStr,
 		conversionFrame->iphdr.saddr.oct1,
 		conversionFrame->iphdr.saddr.oct2,
 		conversionFrame->iphdr.saddr.oct3,
@@ -60,7 +60,7 @@ std::string FrameToStr(frame *conversionFrame)
 	if(Result <= 0)
 	{
 		printf("Failed write to the ret buffer\n");
-		strcpy(pRetBuff, "Unable to write string");
+		strcpy_s(pRetBuff, MAX_PATH, "Unable to write string\n");
 	}
 
 	return pRetBuff;
@@ -71,18 +71,19 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 {
 	std::string ContentHeader;
 	char ContentPayload[MAX_PATH];
+	if (match == 2)
+	{
+		return TRUE;
+	}
+	if (count == 2)
+	{
+		return FALSE;
+	}
 	if (currentFrame == NULL)
 	{
 		return FALSE;
 	}
-	if (match == 3)
-	{
-		return TRUE;
-	}
-	if (count == 3)
-	{
-		return FALSE;
-	}
+
 	//IP Layer
 	if((tempFrame->issue_flags & IPv4_TTL_MANIPULATION) != IPv4_TTL_MANIPULATION && (currentFrame->issue_flags & IPv4_TTL_MANIPULATION) != IPv4_TTL_MANIPULATION)
 	{
@@ -92,7 +93,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			//Write this to a log somewhere
 			//I should have a flag system for the convesations to see if we already have hit one of these flags
 			ContentHeader = FrameToStr(tempFrame);
-			sprintf(ContentPayload, "%s TTL manipulation found.\nQuestions:\nAre we communicating with a UNIX device?\nWhat does our traffic route look like?\n", ContentHeader.c_str());
+			sprintf_s(ContentPayload, MAX_PATH, "%s TTL manipulation found.\nQuestions:\nAre we communicating with a UNIX device?\nWhat does our traffic route look like?\n", ContentHeader.c_str());
 			WriteToReport(ContentPayload, LogType::WARN);
 			currentFrame->issue_flags |= IPv4_TTL_MANIPULATION;
 		}
@@ -103,13 +104,13 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 	{
 		// Do our TCP RFL checks
 		// WARN
-		// SYN Retransmits we need to try 4 times
+		// SYN Retransmits we need to try 2 times
 		if((tempFrame->issue_flags & TCP_SYNRT) != TCP_SYNRT && (currentFrame->issue_flags & TCP_SYNRT) != TCP_SYNRT)
 		{
 			if ((currentFrame->tcphdr.flags & SYN) == SYN)
 			{
 
-				if ((tempFrame->tcphdr.flags & (SYN | ACK)) != (SYN | ACK))
+				if ((tempFrame->tcphdr.flags & (SYN & ACK)) != (SYN & ACK))
 				{
 					//We match the behavior of breaking the expected behavior
 					match++;
@@ -117,11 +118,11 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 					if (CheckConversation(currentFrame->prev_frame, currentFrame, match, count))
 					{
 						ContentHeader = FrameToStr(tempFrame);
-						sprintf(ContentPayload, "%s TCP SYN Retransmission found.\nQuestions\nDo we see the packet arrive on the destination?\nDo we have a TCP listener on the destination port?\n", ContentHeader);
+						sprintf_s(ContentPayload, MAX_PATH, "%s TCP SYN Retransmission found.\nQuestions\nDo we see the packet arrive on the destination?\nDo we have a TCP listener on the destination port?\n", ContentHeader.c_str());
 						WriteToReport(ContentPayload, LogType::WARN);
 						//I need to set the flag for TCP_SYNRT
 						currentFrame->issue_flags |= TCP_SYNRT;
-						return TRUE;
+						return FALSE;
 					}
 					match = 0;
 					count = 0;
@@ -131,7 +132,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 		// TCP Retransmits
 		if((tempFrame->issue_flags & TCP_RT) != TCP_RT && (currentFrame->issue_flags & TCP_RT) != TCP_RT)
 		{
-			if (currentFrame->tcphdr.seq == tempFrame->tcphdr.seq)
+			if (currentFrame->tcphdr.seq == tempFrame->tcphdr.seq && (tempFrame->tcphdr.flags & SYN) != SYN)
 			{
 				//I might need more robust logic for this...
 				match++;
@@ -139,7 +140,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 				if (CheckConversation(currentFrame->prev_frame, tempFrame, match, count))
 				{
 					ContentHeader = FrameToStr(tempFrame);
-					sprintf(ContentPayload, "%s TCP Retransmission found.\n",ContentHeader);
+					sprintf_s(ContentPayload, MAX_PATH, "%s TCP Retransmission found.\n",ContentHeader);
 					currentFrame->issue_flags |= TCP_RT;
 					return TRUE;
 				}
@@ -148,11 +149,25 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			}
 		}
 		//TCP Zero Window
+		if ((currentFrame->issue_flags & TCP_ZERO_WINDOW) != TCP_ZERO_WINDOW)
+		{
+			if (tempFrame->tcphdr.window == 0 && (tempFrame->tcphdr.flags & ACK) == ACK)
+			{
+				ContentHeader = FrameToStr(tempFrame);
+				sprintf_s(ContentPayload, MAX_PATH, "%s TCP Zero Window found\n", ContentHeader);
+				currentFrame->issue_flags |= TCP_ZERO_WINDOW;
+			}
+		}
 		// INFO
 		// RST
-		if ((tempFrame->tcphdr.flags & (RST | FIN)) == (RST|FIN) || (currentFrame->tcphdr.flags & (RST | FIN)) == (RST | FIN) )
+		if ((currentFrame->issue_flags & TCP_RST) != TCP_RST)
 		{
-			printf("We are doing a RST or a FIN\n");
+			if (((tempFrame->tcphdr.flags & RST) == RST || (currentFrame->tcphdr.flags & (RST)) == RST) && (currentFrame->tcphdr.flags & FIN) != FIN)
+			{
+				ContentHeader = FrameToStr(tempFrame);
+				sprintf_s(ContentPayload, MAX_PATH, "%s TCP RST found.\n", ContentHeader);
+				currentFrame->issue_flags |= TCP_RST;
+			}
 		}
 		// MSS
 		// RTT
@@ -221,7 +236,7 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 	{
 		for (int i = g_vFrames.size(); i > 0; i--)
 		{
-			frame *currentFrame = g_vFrames.at(i - 1);
+			frame* currentFrame = g_vFrames.at(i - 1);
 			//frame currentFrame = currentConvo[-1];
 			//Broadest down to most specific
 			if (currentFrame->iphdr.proto == iphdr->proto)
@@ -235,10 +250,10 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 						|| (currentFrame->dst_port == src_port && currentFrame->src_port == dst_port))
 					{
 						//I should just check against last frame for now but w/e
-						CheckConversation(currentFrame, tempFrame,0,0);
+						CheckConversation(currentFrame, tempFrame, 0, 0);
 						tempFrame->prev_frame = currentFrame;
 						tempFrame->issue_flags = currentFrame->issue_flags;
-						if ((tempFrame->tcphdr.flags & (RST | FIN)) == (RST | FIN))
+						if ((tempFrame->tcphdr.flags & (RST | FIN)) == (RST | FIN)) //This is wrong
 						{
 							g_vFrames.pop_back();
 						}
@@ -253,13 +268,12 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 					}
 				}
 			}
-			if (!bAdded)
-			{
-				g_vFrames.push_back(tempFrame);
-				//printf("Created new convo\n"); //Debug info
-				break;
-			}
+		}
+		if (!bAdded)
+		{
+			g_vFrames.push_back(tempFrame);
+			//printf("Created new convo\n"); //Debug info
 		}
 	}
-	
 }
+	

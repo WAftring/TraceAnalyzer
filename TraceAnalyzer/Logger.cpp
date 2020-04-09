@@ -2,7 +2,7 @@
 #include <string>
 #include <Shlwapi.h>
 #include "Logger.h"
-#pragma warning(disable : 4996)
+
 char g_LogPath[MAX_PATH];
 
 BOOL InitLogger(const char* Path)
@@ -24,7 +24,7 @@ BOOL InitLogger(const char* Path)
 		return FALSE;
 	}
 	LogPath.append("\\Trace_Report.log");
-	strcpy(g_LogPath, LogPath.c_str());
+	strcpy_s(g_LogPath, MAX_PATH, LogPath.c_str());
 	//Testing if the path exists, if yes clear it else, create it
 	if(PathFileExistsA(g_LogPath))
 	{
@@ -55,7 +55,7 @@ BOOL InitLogger(const char* Path)
 		}
 		printf("\n");
 	}
-	sprintf(ReportIntro, "Trace Analysis\n%s\n==========\n\n", Path);
+	sprintf_s(ReportIntro, MAX_PATH, "Trace Analysis\n%s\n==========\n\n", Path);
 	WriteToReport(ReportIntro, LogType::HEADER);
 	return TRUE;
 

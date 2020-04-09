@@ -6,7 +6,7 @@
 #define SYN 0x2
 #define RST 0x4
 #define PSH 0x8
-#define ACK 0xf
+#define ACK 0x10
 #define URG 0x20
 #define ECN 0x40
 #define CWR 0x80
@@ -15,6 +15,8 @@
 #define IPv4_TTL_MANIPULATION 0x1
 #define TCP_SYNRT 0x2
 #define TCP_RT 0x4
+#define TCP_RST 0x8
+#define TCP_ZERO_WINDOW 0x10
 
 //How bitmasking works: https://stackoverflow.com/questions/18591924/how-to-use-bitmask
 
@@ -44,7 +46,7 @@ typedef struct ip_header{
 	u_short crc;
 	ip_address saddr;
 	ip_address daddr;
-	u_int op_pad;
+	//u_int op_pad;
 }ip_header;
 
 /* ICMP Header */
