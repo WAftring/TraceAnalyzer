@@ -32,9 +32,9 @@ BOOL ParseArgs(int argc, char* argv[])
 	{
 		if(i > 1)
 		{
-			if(strcmp(argv[i], "t"))
+			if(strcmp(argv[i], "-t") == 0)
 				g_L4Flags = PARSE_TCP;
-			else if(strcmp(argv[i], "-u"))
+			else if(!strcmp(argv[i], "-u") == 0)
 				g_L4Flags = PARSE_UDP;
 			else
 				return FALSE;
