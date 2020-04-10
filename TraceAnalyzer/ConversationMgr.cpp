@@ -1,6 +1,7 @@
 #include "ConversationMgr.h"
 #include <cstdlib>
 #include <string>
+#include <iostream>
 #include "Logger.h"
 
 std::vector<frame*> g_vFrames;
@@ -18,11 +19,15 @@ BOOL CompareIPAddr(ip_address ip1, ip_address ip2)
 		return TRUE;
 	return FALSE;
 }
+
 const char* ProtocolToString(BYTE proto)
 {
 	const char *ProtoStr;
 	switch(proto)
 	{
+		case 1:
+			ProtoStr = "ICMP";
+			break;
 		case 6:
 			ProtoStr = "TCP";
 			break;
@@ -37,6 +42,7 @@ const char* ProtocolToString(BYTE proto)
 	return ProtoStr;
 	
 }
+
 std::string FrameToStr(frame *conversionFrame)
 {
 	
@@ -70,7 +76,8 @@ std::string FrameToStr(frame *conversionFrame)
 BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int count)
 {
 	std::string ContentHeader;
-	char ContentPayload[MAX_PATH];
+	std::string Reason;
+	std::string ContentPayload;
 	if (match == 2)
 	{
 		return TRUE;
@@ -93,8 +100,8 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			//Write this to a log somewhere
 			//I should have a flag system for the convesations to see if we already have hit one of these flags
 			ContentHeader = FrameToStr(tempFrame);
-			sprintf_s(ContentPayload, MAX_PATH, "%s TTL manipulation found.\nQuestions:\nAre we communicating with a UNIX device?\nWhat does our traffic route look like?\n", ContentHeader.c_str());
-			WriteToReport(g_timestr, ContentPayload, LogType::WARN);
+			ContentPayload = ContentHeader + " TTL manipulation found.\nQuestions:\nAre we communicating with a UNIX device?\nWhat does our traffic route look like?\n";
+			WriteToReport(g_timestr, ContentPayload.c_str(), LogType::WARN);
 			currentFrame->issue_flags |= IPv4_TTL_MANIPULATION;
 		}
 	}
@@ -118,8 +125,8 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 					if (CheckConversation(currentFrame->prev_frame, currentFrame, match, count))
 					{
 						ContentHeader = FrameToStr(tempFrame);
-						sprintf_s(ContentPayload, MAX_PATH, "%s TCP SYN Retransmission found.\nQuestions\nDo we see the packet arrive on the destination?\nDo we have a TCP listener on the destination port?\n", ContentHeader.c_str());
-						WriteToReport(g_timestr, ContentPayload, LogType::WARN);
+						ContentPayload = ContentHeader + " TCP SYN Retransmission found.\nQuestions\nDo we see the packet arrive on the destination ? \nDo we have a TCP listener on the destination port ? \n";
+						WriteToReport(g_timestr, ContentPayload.c_str(), LogType::WARN);
 						//I need to set the flag for TCP_SYNRT
 						currentFrame->issue_flags |= TCP_SYNRT;
 						return FALSE;
@@ -140,8 +147,8 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 				if (CheckConversation(currentFrame->prev_frame, tempFrame, match, count))
 				{
 					ContentHeader = FrameToStr(tempFrame);
-					sprintf_s(ContentPayload, MAX_PATH, "%s TCP Retransmission found.\n",ContentHeader);
-					WriteToReport(g_timestr, ContentPayload, LogType::WARN);
+					ContentPayload = ContentHeader + " TCP Retransmission found\n";
+					WriteToReport(g_timestr, ContentPayload.c_str(), LogType::WARN);
 					currentFrame->issue_flags |= TCP_RT;
 					return TRUE;
 				}
@@ -150,16 +157,16 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			}
 		}
 		//TCP Zero Window
-		if ((currentFrame->issue_flags & TCP_ZERO_WINDOW) != TCP_ZERO_WINDOW)
+		/*if ((currentFrame->issue_flags & TCP_ZERO_WINDOW) != TCP_ZERO_WINDOW)
 		{
 			if (tempFrame->tcphdr.window == 0 && (tempFrame->tcphdr.flags & ACK) == ACK)
 			{
 				ContentHeader = FrameToStr(tempFrame);
-				sprintf_s(ContentPayload, MAX_PATH, "%s TCP Zero Window found\n", ContentHeader);
+				sprintf_s(ContentPayload, MAX_PATH, "%s TCP Zero Window found\n", ContentHeader.c_str());
 				WriteToReport(g_timestr, ContentPayload, LogType::INFO);
 				currentFrame->issue_flags |= TCP_ZERO_WINDOW;
 			}
-		}
+		}*/
 		// INFO
 		// RST
 		if ((currentFrame->issue_flags & TCP_RST) != TCP_RST)
@@ -167,8 +174,8 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			if (((tempFrame->tcphdr.flags & RST) == RST || (currentFrame->tcphdr.flags & (RST)) == RST) && (currentFrame->tcphdr.flags & FIN) != FIN)
 			{
 				ContentHeader = FrameToStr(tempFrame);
-				sprintf_s(ContentPayload, MAX_PATH, "%s TCP RST found.\n", ContentHeader);
-				WriteToReport(g_timestr, ContentPayload, LogType::INFO);
+				ContentPayload = ContentHeader + " TCP RST found\n";
+				WriteToReport(g_timestr, ContentPayload.c_str(), LogType::INFO);
 				currentFrame->issue_flags |= TCP_RST;
 			}
 		}
@@ -181,6 +188,55 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 		// Do our UDP RFL checks
 		// I'm gonna need to think about this a bit more...
 		
+	}
+	else if(currentFrame->iphdr.proto == 1)
+	{
+		//This section looks like a mess but it is all RFC defined
+		// See here: https://tools.ietf.org/html/rfc792
+		switch(tempFrame->icmphdr.type)
+		{
+			case 3: //Destination Unreachable
+				switch(tempFrame->icmphdr.code)
+				{
+					case 0:
+						Reason = "Destination unreachable";
+						break;
+					case 1:
+						Reason = "Host unreachable";
+						break;
+					case 2:
+						Reason = "Protocol unreachable";
+						break;
+					case 4:
+						Reason = "Fragmentation needed and DF set";
+						break;
+					case 5:
+						Reason = "Source route failed";
+						break;
+				}
+				break;
+			case 4:  //Source Quench
+				Reason = "Source quenched. Sending too many datagrams for the endpoint / gateway";
+				break;
+			case 11:  //Time Exceeded
+				switch(tempFrame->icmphdr.code)
+				{
+					case 0:
+						Reason = "TTL exceeded in transit";
+						break;
+					case 1:
+						Reason = "Fragment reassembly time exceeded";
+						break;
+				}
+				break;
+		}
+		if(Reason != "")
+		{
+			ContentHeader = FrameToStr(tempFrame);
+			ContentPayload = ContentHeader + "ICMP Issue: " + Reason;
+			WriteToReport(g_timestr, ContentPayload.c_str(), LogType::INFO);
+			currentFrame->issue_flags |= ICMP_ERR;
+		}
 	}
 	
 	return FALSE;

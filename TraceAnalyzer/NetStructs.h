@@ -17,6 +17,7 @@
 #define TCP_RT 0x4
 #define TCP_RST 0x8
 #define TCP_ZERO_WINDOW 0x10
+#define ICMP_ERR 0x20
 
 //How bitmasking works: https://stackoverflow.com/questions/18591924/how-to-use-bitmask
 
@@ -83,6 +84,7 @@ typedef struct frame{
 	ip_header iphdr;
 	tcp_header tcphdr;
 	udp_header udphdr;
+	icmp_header icmphdr;
 	u_short src_port;
 	u_short dst_port;
 	frame* prev_frame;

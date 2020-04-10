@@ -68,6 +68,9 @@
     <ClInclude Include="Logger.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ParserFlags.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Library Include="..\..\..\..\..\..\PCPP-Files\WpdPack_4_1_2\WpdPack\Lib\x64\Packet.lib">

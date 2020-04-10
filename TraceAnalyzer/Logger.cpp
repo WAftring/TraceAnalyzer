@@ -62,7 +62,7 @@ BOOL InitLogger(const char* Path)
 	
 }
 
-VOID WriteToReport(char timestr[64], char* Content, LogType type)
+VOID WriteToReport(char timestr[64], const char* Content, LogType type)
 {
 	HANDLE hFile;
 	std::string WriteStr;

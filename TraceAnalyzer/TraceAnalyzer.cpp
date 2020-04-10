@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string>
 #include <Shlwapi.h>
+#include "ParserFlags.h"
 #include "Logger.h"
 #include "NetStructs.h"
 #include "ConversationMgr.h"
@@ -20,7 +21,29 @@ UINT current_parsed = 0;
 VOID packet_handler(u_char*, const struct pcap_pkthdr *, const u_char*);
 BOOL ConvertToPCAP(const std::string FileName, std::string &ConvertedBuff);
 BOOL ParseArgs(int argc, char* argv[]);
-
+BOOL ParseArgs(int argc, char* argv[])
+{
+	if (!PathFileExistsA(argv[1]))
+	{
+		printf("Cannot find specified file %s\n", argv[1]);
+		return FALSE;
+	}
+	for(int i = 0; i < argc; i++)
+	{
+		if(i > 1)
+		{
+			if(strcmp(argv[i], "t"))
+				g_L4Flags = PARSE_TCP;
+			else if(strcmp(argv[i], "-u"))
+				g_L4Flags = PARSE_UDP;
+			else
+				return FALSE;
+		}
+	}
+	
+	return TRUE;
+	
+}
 int main(int argc, char* argv[])
 {
 	// I need to figure out how to handle flags
@@ -40,17 +63,23 @@ int main(int argc, char* argv[])
 		printf("Failed to load the required DLL's\n");
 		exit(1);
 	}
-	if(argc < 2 && !PathFileExistsA(argv[1]))
+	if(argc < 3)
 	{
+		printf("Not enough arguments\n");
 		printf("\nUSAGE:\n");
-		printf("\tTraceAnalyzer.exe [filename]\t\tReviews the input pcap/pcapng for any common issues.\n");
+		printf("\tTraceAnalyzer.exe [filename]\t\tReviews the input pcap/pcapng for any common issues\n");
+		printf("\t\t\t -t\tParse TCP packets\n");
+		printf("\t\t\t -u\tParse UDP packets\n");
 		//I should add a flag for out report location
 		exit(1);
 	}
-	/*if (ParseArgs(argc, argv))
-	{
 
-	}*/
+	if (!ParseArgs(argc, argv))
+	{
+		printf("Invalid command arguments\n");
+		exit(1);
+	}
+	
 	printf("Starting conversion of %s\n", argv[1]);
 	if (!InitLogger(argv[1]))
 	{
@@ -175,13 +204,17 @@ void packet_handler(u_char* temp1, const struct pcap_pkthdr* header, const u_cha
 	if((int)pEthHeader->type == 0x08)
 	{
 		pIPHeader = (ip_header *) (pkt_data + 14);
-		ip_len = (pIPHeader->ver_ihl & 0xf) * 4;
-		CheckPacket(timestr, pIPHeader, ip_len);
+		if(pIPHeader->proto == g_L4Flags)
+		{
+			ip_len = (pIPHeader->ver_ihl & 0xf) * 4;
+			CheckPacket(timestr, pIPHeader, ip_len);
+		}
 	}
 	current_parsed++;
 	printf("In progress: %9.2f %%\r", (float)(((float)current_parsed / (float)packet_counter) * 100));
 
 }
+
 BOOL ConvertToPCAP(const std::string Filename, std::string &ConvertedFile)
 {
 	STARTUPINFOA si;
@@ -234,13 +267,5 @@ BOOL ConvertToPCAP(const std::string Filename, std::string &ConvertedFile)
 	//strcpy_s(&ConvertedFile, MAX_PATH, OutPath);
 	return TRUE;
 }
-BOOL ParseArgs(int argc, char* argv[])
-{
-	// For future args implementations
-	//for (int i = 0; i < argc; i++)
-	//{
-	//	
-	//}
-	return FALSE;
-}
+
 

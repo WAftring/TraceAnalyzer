@@ -186,6 +186,7 @@
     <ClInclude Include="Logger.h" />
     <ClInclude Include="Misc.h" />
     <ClInclude Include="NetStructs.h" />
+    <ClInclude Include="ParserFlags.h" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="..\..\..\..\..\..\PCPP-Files\WpdPack_4_1_2\WpdPack\Lib\x64\Packet.lib" />
