@@ -8,4 +8,4 @@ enum LogType {
 
 
 BOOL InitLogger(const char* Path);
-VOID WriteToReport(char* Content, LogType type);
+VOID WriteToReport(char timestr[64], char* Content, LogType type);

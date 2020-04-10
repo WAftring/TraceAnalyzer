@@ -56,13 +56,13 @@ BOOL InitLogger(const char* Path)
 		printf("\n");
 	}
 	sprintf_s(ReportIntro, MAX_PATH, "Trace Analysis\n%s\n==========\n\n", Path);
-	WriteToReport(ReportIntro, LogType::HEADER);
+	WriteToReport(NULL, ReportIntro, LogType::HEADER);
 	return TRUE;
 
 	
 }
 
-VOID WriteToReport(char* Content, LogType type)
+VOID WriteToReport(char timestr[64], char* Content, LogType type)
 {
 	HANDLE hFile;
 	std::string WriteStr;
@@ -92,16 +92,20 @@ VOID WriteToReport(char* Content, LogType type)
 		printf("Failed to write to file\n");
 		bErrorFlag = TRUE;
 	}
+	
+	//Adding in timestamps to the log entry
+	
 	switch (type)
 	{
 	case HEADER:
-
 		break;
 	case WARN:
-		WriteStr.append("[WARN] ");
+		WriteStr.append(timestr);
+		WriteStr.append(" [WARN] ");
 		break;
 	case INFO:
-		WriteStr.append("[INFO] ");
+		WriteStr.append(timestr);
+		WriteStr.append(" [INFO] ");
 		break;
 	}
 	WriteStr.append(Content);

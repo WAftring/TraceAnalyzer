@@ -152,11 +152,11 @@ void packet_handler(u_char* temp1, const struct pcap_pkthdr* header, const u_cha
 {
 	/* I need to think of a way to manage the structures of conversations */
 	struct tm ltime;
-	char timestr[16];
+	char timebuf[64], timestr[64];
 	ethernet_header *pEthHeader;
 	ip_header *pIPHeader;
 	u_int ip_len;
-	time_t local_tv_sec;
+	time_t local_tv_sec, local_tv_usec;
 	
 	int i = 0;
 	//(VOID)temp1;
@@ -164,8 +164,10 @@ void packet_handler(u_char* temp1, const struct pcap_pkthdr* header, const u_cha
 	
 	/* Lets convert the stamp of the packet into something useful */	
 	local_tv_sec = header->ts.tv_sec;
+	local_tv_usec = header->ts.tv_usec;
 	localtime_s(&ltime, &local_tv_sec);
-	strftime(timestr, sizeof timestr, "%H:%M:%S", &ltime);
+	strftime(timebuf, sizeof timestr, "%H:%M:%S", &ltime);
+	snprintf(timestr, sizeof timestr, "%s.%06ld", timebuf, local_tv_usec);
 	
 	
 	pEthHeader = (ethernet_header *)(pkt_data);
@@ -203,7 +205,7 @@ BOOL ConvertToPCAP(const std::string Filename, std::string &ConvertedFile)
 	//strcat_s(OutPath, MAX_PATH, "\\temp.pcap");
 	args = "\"C:\\Program Files\\WireShark\\editcap.exe\" -F pcap " + Filename + " " + OutPath;
 	//sprintf_s(args, MAX_PATH, "\"C:\\Program Files\\WireShark\\editcap.exe\" -F pcap %s %s", Filename, OutPath);
-	std::cout << args << std::endl;
+	//std::cout << args << std::endl;
 	//printf("Args string %s\n", args);
 	if (!CreateProcessA(NULL,
 						(LPSTR)args.c_str(),

@@ -4,7 +4,7 @@
 #include "Logger.h"
 
 std::vector<frame*> g_vFrames;
-
+char g_timestr[64];
 BOOL CompareIPAddr(ip_address ip1, ip_address ip2);
 BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int count); // Maybe I should overload this so I don't need to have to deal with a return from CheckPacket
 std::string FrameToStr(frame *conversionFrame);
@@ -94,7 +94,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			//I should have a flag system for the convesations to see if we already have hit one of these flags
 			ContentHeader = FrameToStr(tempFrame);
 			sprintf_s(ContentPayload, MAX_PATH, "%s TTL manipulation found.\nQuestions:\nAre we communicating with a UNIX device?\nWhat does our traffic route look like?\n", ContentHeader.c_str());
-			WriteToReport(ContentPayload, LogType::WARN);
+			WriteToReport(g_timestr, ContentPayload, LogType::WARN);
 			currentFrame->issue_flags |= IPv4_TTL_MANIPULATION;
 		}
 	}
@@ -119,7 +119,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 					{
 						ContentHeader = FrameToStr(tempFrame);
 						sprintf_s(ContentPayload, MAX_PATH, "%s TCP SYN Retransmission found.\nQuestions\nDo we see the packet arrive on the destination?\nDo we have a TCP listener on the destination port?\n", ContentHeader.c_str());
-						WriteToReport(ContentPayload, LogType::WARN);
+						WriteToReport(g_timestr, ContentPayload, LogType::WARN);
 						//I need to set the flag for TCP_SYNRT
 						currentFrame->issue_flags |= TCP_SYNRT;
 						return FALSE;
@@ -141,6 +141,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 				{
 					ContentHeader = FrameToStr(tempFrame);
 					sprintf_s(ContentPayload, MAX_PATH, "%s TCP Retransmission found.\n",ContentHeader);
+					WriteToReport(g_timestr, ContentPayload, LogType::WARN);
 					currentFrame->issue_flags |= TCP_RT;
 					return TRUE;
 				}
@@ -155,6 +156,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			{
 				ContentHeader = FrameToStr(tempFrame);
 				sprintf_s(ContentPayload, MAX_PATH, "%s TCP Zero Window found\n", ContentHeader);
+				WriteToReport(g_timestr, ContentPayload, LogType::INFO);
 				currentFrame->issue_flags |= TCP_ZERO_WINDOW;
 			}
 		}
@@ -166,6 +168,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 			{
 				ContentHeader = FrameToStr(tempFrame);
 				sprintf_s(ContentPayload, MAX_PATH, "%s TCP RST found.\n", ContentHeader);
+				WriteToReport(g_timestr, ContentPayload, LogType::INFO);
 				currentFrame->issue_flags |= TCP_RST;
 			}
 		}
@@ -184,7 +187,7 @@ BOOL CheckConversation(frame *currentFrame, frame *tempFrame, int match, int cou
 	
 }
 
-void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This function needs a rework to keep the memory valid
+void CheckPacket(char timestr[64], ip_header *iphdr, u_int ip_len) //This function needs a rework to keep the memory valid
 {
 	BOOL bAdded = FALSE;
 	u_short src_port, dst_port;
@@ -193,6 +196,7 @@ void CheckPacket(char timestr[16], ip_header *iphdr, u_int ip_len) //This functi
 	udp_header* pUDPHeader = new udp_header();
 	frame *tempFrame = new frame();
 	
+	strcpy_s(g_timestr, 64, timestr);
 	switch(iphdr->proto)
 	{
 		case 1:
